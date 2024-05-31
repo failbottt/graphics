@@ -21,12 +21,14 @@ const char *vs = "#version 460 core\n"
     "\n"
     "out vec2 TexCoord;\n"
     "\n"
-    "uniform mat4 transform;\n"
+    "uniform mat4 model;\n"
+    "uniform mat4 view;\n"
+    "uniform mat4 projection;\n"
     "\n"
     "void main()\n"
     "{\n"
-    "	gl_Position = transform * vec4(aPos, 1.0);\n"
-    "	TexCoord = vec2(aTexCoord.x, aTexCoord.y);\n"
+    "    gl_Position = projection*view*model*vec4(aPos, 1.0f);\n"
+    "    TexCoord = vec2(aTexCoord.x, 1.0 - aTexCoord.y);\n"
     "}";
 
 const char *fs = "#version 460 core\n"
@@ -34,15 +36,13 @@ const char *fs = "#version 460 core\n"
     "\n"
     "in vec2 TexCoord;\n"
     "\n"
-    "// texture samplers\n"
     "uniform sampler2D texture1;\n"
     "uniform sampler2D texture2;\n"
     "\n"
     "void main()\n"
     "{\n"
-    "	// linearly interpolate between both textures (80% container, 20% awesomeface)\n"
-    "	FragColor = mix(texture(texture1, TexCoord), texture(texture2, TexCoord), 0.2);\n"
-"}";
+    "    FragColor = mix(texture(texture1, TexCoord), texture(texture2, TexCoord), 0.2);\n"
+    "}";
 
 int main(void)
 {
@@ -75,6 +75,9 @@ int main(void)
         return -1;
     }
 
+    // configure global opengl state
+    // ------------------------------------
+    glEnable(GL_DEPTH_TEST);
 
     // compile shaders
     // build and compile our shader program
@@ -119,45 +122,79 @@ int main(void)
 
      // set up vertex data (and buffer(s)) and configure vertex attributes
     // ------------------------------------------------------------------
-     float vertices[] = {
-        // positions          // texture coords
-         0.5f,  0.5f, 0.0f,   1.0f, 1.0f, // top right
-         0.5f, -0.5f, 0.0f,   1.0f, 0.0f, // bottom right
-        -0.5f, -0.5f, 0.0f,   0.0f, 0.0f, // bottom left
-        -0.5f,  0.5f, 0.0f,   0.0f, 1.0f  // top left 
+    float vertices[] = {
+        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
+         0.5f, -0.5f, -0.5f,  1.0f, 0.0f,
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
+
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+         0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f,  0.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+
+        -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+         0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+         0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+         0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+         0.5f, -0.5f, -0.5f,  1.0f, 1.0f,
+         0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+         0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f,  0.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f
     };
-    unsigned int indices[] = {
-        0, 1, 3, // first triangle
-        1, 2, 3  // second triangle
+    // world space positions of our cubes
+    hmm_vec3 cubePositions[] = {
+        HMM_Vec3( 0.0f,  0.0f,  0.0f),
+        HMM_Vec3( 2.0f,  5.0f, -15.0f),
+        HMM_Vec3(-1.5f, -2.2f, -2.5f),
+        HMM_Vec3(-3.8f, -2.0f, -12.3f),
+        HMM_Vec3( 2.4f, -0.4f, -3.5f),
+        HMM_Vec3(-1.7f,  3.0f, -7.5f),
+        HMM_Vec3( 1.3f, -2.0f, -2.5f),
+        HMM_Vec3( 1.5f,  2.0f, -2.5f),
+        HMM_Vec3( 1.5f,  0.2f, -1.5f),
+        HMM_Vec3(-1.3f,  1.0f, -1.5f)
     };
-    unsigned int VBO, VAO, EBO;
+
+    unsigned int VBO, VAO;
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
-    glGenBuffers(1, &EBO);
-    // bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
     glBindVertexArray(VAO);
-
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
     // position attribute
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-    // color attribute
     // texture coord attribute
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
-    // remember: do NOT unbind the EBO while a VAO is active as the bound element buffer object IS stored in the VAO; keep the EBO bound.
-    //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     
     unsigned int texture1, texture2;
-
     glGenTextures(1, &texture1);
     glBindTexture(GL_TEXTURE_2D, texture1); 
-     // set the texture wrapping parameters
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	// set texture wrapping to GL_REPEAT (default wrapping method)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     // set texture filtering parameters
@@ -204,37 +241,55 @@ int main(void)
     glUseProgram(shaderProgram);
     glUniform1i(glGetUniformLocation(shaderProgram, "texture1"), 0);
     glUniform1i(glGetUniformLocation(shaderProgram, "texture2"), 1);
-    
 
     // You can unbind the VAO afterwards so other VAO calls won't accidentally modify this VAO, but this rarely happens. Modifying other
     // VAOs requires a call to glBindVertexArray anyways so we generally don't unbind VAOs (nor VBOs) when it's not directly necessary.
     glBindVertexArray(0);
 
+    // local space is the coordinates of the object
+    // view is the "camera" -- think FPS view
+    GLuint projLoc = glGetUniformLocation(shaderProgram, "projection");
+    GLuint viewLoc = glGetUniformLocation(shaderProgram, "view");
+    GLuint modelLoc = glGetUniformLocation(shaderProgram, "model");
+
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
     {
-         // render
+        // render
         // ------
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture1);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, texture2);
 
+        glUseProgram(shaderProgram);
+        glBindVertexArray(VAO);
 
-        // create id matrix
-        hmm_mat4 transform = HMM_Translate(HMM_Vec3(-0.25f, 0.25f, 0.0f));
-        transform = HMM_Rotate_With_Mat4(transform, (float)glfwGetTime() * 40, HMM_Vec3(0.0f, 0.0f, 1.0f));
+        
+        hmm_mat4 projection = HMM_Perspective(HMM_ToRadians(45.0f), (float)screen_width/(float)screen_height, 0.1f, 1000.0f);
+        // L-R / U-D / Front-Back
+        hmm_mat4 view       = HMM_Translate(HMM_Vec3(0.0f, 0.0f, -900.0f));
+        // pass transformation matrices to the shader
+        glUniformMatrix4fv(projLoc, 1, GL_FALSE, (const GLfloat*)projection.Elements);
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, (const GLfloat*)view.Elements);
 
-        unsigned int transformLoc = glGetUniformLocation(shaderProgram, "transform");
-        glUniformMatrix4fv(transformLoc, 1, GL_FALSE, (const GLfloat*)transform.Elements);
 
-        // draw our first triangle
-        glBindVertexArray(VAO); // seeing as we only have a single VAO there's no need to bind it every time, but we'll do so to keep things a bit more organized
-        //glDrawArrays(GL_TRIANGLES, 0, 6);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        for (int i = 0; i < 10; i++) {
+            hmm_mat4 model = HMM_Translate(cubePositions[i]);
+            int n = i;
+            if (n == 0) {
+                n = 1;
+            }
+            float angle = 20.0f*n;
+            model = HMM_Rotate_With_Mat4(model, ((float)glfwGetTime() * HMM_ToRadians(angle)*100), HMM_Vec3(1.0f, 0.3f, 0.5f));
+            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, (const GLfloat*)model.Elements);
+
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+        }
+
 
         /* Swap front and back buffers */
         glfwSwapBuffers(window);
