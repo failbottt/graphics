@@ -6,6 +6,9 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+#define HANDMADE_MATH_IMPLEMENTATION
+#include "handmade_math.h"
+
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void process_input(GLFWwindow *window);
 
@@ -14,32 +17,32 @@ int screen_height = 1080;
 
 const char *vs = "#version 460 core\n"
     "layout (location = 0) in vec3 aPos;\n"
-    "layout (location = 1) in vec3 aColor;\n"
-    "layout (location = 2) in vec2 aTexCoord;\n"
+    "layout (location = 1) in vec2 aTexCoord;\n"
     "\n"
-    "out vec3 ourColor;\n"
     "out vec2 TexCoord;\n"
+    "\n"
+    "uniform mat4 transform;\n"
     "\n"
     "void main()\n"
     "{\n"
-        "gl_Position = vec4(aPos, 1.0);\n"
-        "ourColor = aColor;\n"
-        "TexCoord = vec2(aTexCoord.x, aTexCoord.y);\n"
+    "	gl_Position = transform * vec4(aPos, 1.0);\n"
+    "	TexCoord = vec2(aTexCoord.x, aTexCoord.y);\n"
     "}";
 
 const char *fs = "#version 460 core\n"
     "out vec4 FragColor;\n"
-    "in vec3 ourColor;\n"
+    "\n"
     "in vec2 TexCoord;\n"
+    "\n"
     "// texture samplers\n"
     "uniform sampler2D texture1;\n"
     "uniform sampler2D texture2;\n"
+    "\n"
     "void main()\n"
     "{\n"
     "	// linearly interpolate between both textures (80% container, 20% awesomeface)\n"
-    "	FragColor = mix(texture(texture1, TexCoord), texture(texture2, TexCoord), 0.3);\n"
-    /* "	FragColor = texture(texture1, TexCoord);\n" */
-    "}";
+    "	FragColor = mix(texture(texture1, TexCoord), texture(texture2, TexCoord), 0.2);\n"
+"}";
 
 int main(void)
 {
@@ -117,15 +120,15 @@ int main(void)
      // set up vertex data (and buffer(s)) and configure vertex attributes
     // ------------------------------------------------------------------
      float vertices[] = {
-        // positions          // colors           // texture coords
-         0.5f,  0.5f, 0.0f,   1.0f, 0.0f, 0.0f,   1.0f, 1.0f, // top right
-         0.5f, -0.5f, 0.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f, // bottom right
-        -0.5f, -0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   0.0f, 0.0f, // bottom left
-        -0.5f,  0.5f, 0.0f,   1.0f, 1.0f, 0.0f,   0.0f, 1.0f  // top left 
+        // positions          // texture coords
+         0.5f,  0.5f, 0.0f,   1.0f, 1.0f, // top right
+         0.5f, -0.5f, 0.0f,   1.0f, 0.0f, // bottom right
+        -0.5f, -0.5f, 0.0f,   0.0f, 0.0f, // bottom left
+        -0.5f,  0.5f, 0.0f,   0.0f, 1.0f  // top left 
     };
-    unsigned int indices[] = {  // note that we start from 0!
-        0, 1, 3,  // first Triangle
-        1, 2, 3   // second Triangle
+    unsigned int indices[] = {
+        0, 1, 3, // first triangle
+        1, 2, 3  // second triangle
     };
     unsigned int VBO, VAO, EBO;
     glGenVertexArrays(1, &VAO);
@@ -141,14 +144,12 @@ int main(void)
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
     // position attribute
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
     // color attribute
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
     // texture coord attribute
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
     // remember: do NOT unbind the EBO while a VAO is active as the bound element buffer object IS stored in the VAO; keep the EBO bound.
     //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     
@@ -222,8 +223,15 @@ int main(void)
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, texture2);
 
+
+        // create id matrix
+        hmm_mat4 transform = HMM_Translate(HMM_Vec3(-0.25f, 0.25f, 0.0f));
+        transform = HMM_Rotate_With_Mat4(transform, (float)glfwGetTime() * 40, HMM_Vec3(0.0f, 0.0f, 1.0f));
+
+        unsigned int transformLoc = glGetUniformLocation(shaderProgram, "transform");
+        glUniformMatrix4fv(transformLoc, 1, GL_FALSE, (const GLfloat*)transform.Elements);
+
         // draw our first triangle
-        glUseProgram(shaderProgram);
         glBindVertexArray(VAO); // seeing as we only have a single VAO there's no need to bind it every time, but we'll do so to keep things a bit more organized
         //glDrawArrays(GL_TRIANGLES, 0, 6);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
