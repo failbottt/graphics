@@ -9,11 +9,27 @@
 #define HANDMADE_MATH_IMPLEMENTATION
 #include "handmade_math.h"
 
+void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void process_input(GLFWwindow *window);
 
-int screen_width = 1920;
-int screen_height = 1080;
+const int screen_width = 1920;
+const int screen_height = 1080;
+
+hmm_vec3 cameraPos   = {.X = 0.0f, .Y = 0.0f, .Z = 900.0f};
+hmm_vec3 cameraFront = {.X = 0.0f, .Y = 0.0f, .Z = -1.0f};
+hmm_vec3 cameraUp    = {.X = 0.0f, .Y = 1.0f, .Z = 0.0f};
+
+int firstMouse = 1;
+float yaw   = -90.0f;	// yaw is initialized to -90.0 degrees since a yaw of 0.0 results in a direction vector pointing to the right so we initially rotate a bit to the left.
+float pitch =  0.0f;
+float lastX =  (float)screen_width / 2.0;
+float lastY =  (float)screen_height / 2.0;
+float fov   =  45.0f;
+
+// timing
+float deltaTime = 0.0f;	// time between current frame and last frame
+float lastFrame = 0.0f;
 
 const char *vs = "#version 460 core\n"
     "layout (location = 0) in vec3 aPos;\n"
@@ -28,7 +44,7 @@ const char *vs = "#version 460 core\n"
     "void main()\n"
     "{\n"
     "    gl_Position = projection*view*model*vec4(aPos, 1.0f);\n"
-    "    TexCoord = vec2(aTexCoord.x, 1.0 - aTexCoord.y);\n"
+    "    TexCoord = vec2(aTexCoord.x, aTexCoord.y);\n"
     "}";
 
 const char *fs = "#version 460 core\n"
@@ -67,6 +83,10 @@ int main(void)
     }
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+    glfwSetCursorPosCallback(window, mouse_callback);
+
+     // tell GLFW to capture our mouse
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     // NOTE: you have to have a GL context prior to calling this
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
@@ -255,6 +275,16 @@ int main(void)
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
     {
+        // per-frame time 
+        // ----
+        float currentFrame = (float)glfwGetTime();
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
+
+        // input
+        // ----
+        process_input(window);
+
         // render
         // ------
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -269,9 +299,9 @@ int main(void)
         glBindVertexArray(VAO);
 
         
-        hmm_mat4 projection = HMM_Perspective(HMM_ToRadians(45.0f), (float)screen_width/(float)screen_height, 0.1f, 1000.0f);
+        hmm_mat4 projection = HMM_Perspective(HMM_ToRadians(fov), (float)screen_width/(float)screen_height, 0.1f, 5000.0f);
         // L-R / U-D / Front-Back
-        hmm_mat4 view       = HMM_Translate(HMM_Vec3(0.0f, 0.0f, -900.0f));
+        hmm_mat4 view       = HMM_LookAt(cameraPos, HMM_AddVec3(cameraPos, cameraFront), cameraUp);
         // pass transformation matrices to the shader
         glUniformMatrix4fv(projLoc, 1, GL_FALSE, (const GLfloat*)projection.Elements);
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, (const GLfloat*)view.Elements);
@@ -303,10 +333,34 @@ int main(void)
 
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
 // ---------------------------------------------------------------------------------------------------------
-void processInput(GLFWwindow *window)
+void process_input(GLFWwindow *window)
 {
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, 1);
+    }
+
+    float cameraSpeed = (float)(10.5*deltaTime);
+
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+        cameraPos = HMM_AddVec3(cameraPos, HMM_MultiplyVec3f(cameraFront, cameraSpeed*100.5f));
+    }
+
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+        cameraPos = HMM_SubtractVec3(cameraPos, HMM_MultiplyVec3f(cameraFront, cameraSpeed*100.5f));
+    }
+
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+        hmm_vec3 cross = HMM_Cross(cameraFront, cameraUp);
+        hmm_vec3 normalized = HMM_NormalizeVec3(cross);
+        hmm_vec3 product = HMM_MultiplyVec3f(normalized, cameraSpeed);
+        cameraPos = HMM_SubtractVec3(cameraPos, product);
+    }
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+        hmm_vec3 cross = HMM_Cross(cameraFront, cameraUp);
+        hmm_vec3 normalized = HMM_NormalizeVec3(cross);
+        hmm_vec3 product = HMM_MultiplyVec3f(normalized, cameraSpeed);
+        cameraPos = HMM_AddVec3(cameraPos, product);
+    }
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes
@@ -317,3 +371,45 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
     // height will be significantly larger than specified on retina displays.
     glViewport(0, 0, width, height);
 }
+
+// glfw: whenever the mouse moves, this callback is called
+// -------------------------------------------------------
+void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
+{
+    float xpos = (float)xposIn;
+    float ypos = (float)yposIn;
+
+    if (firstMouse)
+    {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = 0;
+    }
+
+    float xoffset = xpos - lastX;
+    float yoffset = lastY - ypos; // reversed since y-coordinates go from bottom to top
+    lastX = xpos;
+    lastY = ypos;
+
+    float sensitivity = 0.00035f; // change this value to your liking
+    xoffset *= sensitivity;
+    yoffset *= sensitivity;
+
+    yaw += xoffset;
+    pitch += yoffset;
+
+    // make sure that when pitch is out of bounds, screen doesn't get flipped
+    if (pitch > 89.0f)
+        pitch = 89.0f;
+    if (pitch < -89.0f)
+        pitch = -89.0f;
+
+    hmm_vec3 front = {
+        .X = cos(HMM_ToRadians(yaw)) * cos(HMM_ToRadians(pitch)),
+        .Y = sin(HMM_ToRadians(pitch)),
+        .Z = sin(HMM_ToRadians(yaw)) * cos(HMM_ToRadians(pitch))
+    };
+
+    cameraFront = HMM_NormalizeVec3(front);
+}
+
